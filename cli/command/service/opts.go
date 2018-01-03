@@ -475,6 +475,7 @@ type serviceOptions struct {
 	entrypoint      ShlexOpt
 	args            []string
 	hostname        string
+	runtime         string
 	env             opts.ListOpts
 	envFile         opts.ListOpts
 	workdir         string
@@ -530,6 +531,16 @@ func newServiceOptions() *serviceOptions {
 		dnsSearch:       opts.NewListOpts(opts.ValidateDNSSearch),
 		hosts:           opts.NewListOpts(opts.ValidateExtraHost),
 	}
+}
+
+func (options *serviceOptions) checkRuntime() (string, error) {
+	switch options.runtime {
+	case "runc":
+	case "nvidia":
+	default:
+		return "", errors.Errorf("Unknown runtime: %s", options.runtime)
+	}
+	return options.runtime, nil
 }
 
 func (options *serviceOptions) ToServiceMode() (swarm.ServiceMode, error) {
@@ -600,6 +611,11 @@ func (options *serviceOptions) ToService(ctx context.Context, apiClient client.N
 		return service, err
 	}
 
+	runtime, err := options.checkRuntime()
+	if err != nil {
+		return service, err
+	}
+
 	service = swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
 			Name:   options.name,
@@ -615,6 +631,7 @@ func (options *serviceOptions) ToService(ctx context.Context, apiClient client.N
 				Labels:     opts.ConvertKVStringsToMap(options.containerLabels.GetAll()),
 				Dir:        options.workdir,
 				User:       options.user,
+				Runtime:    runtime,
 				Groups:     options.groups.GetAll(),
 				StopSignal: options.stopSignal,
 				TTY:        options.tty,
@@ -725,6 +742,7 @@ func addServiceFlags(flags *pflag.FlagSet, opts *serviceOptions, defaultFlagValu
 
 	flags.StringVarP(&opts.workdir, flagWorkdir, "w", "", "Working directory inside the container")
 	flags.StringVarP(&opts.user, flagUser, "u", "", "Username or UID (format: <name|uid>[:<group|gid>])")
+	flags.StringVar(&opts.runtime, flagRuntime, "runc", "Runtime to use for this container")
 	flags.Var(&opts.credentialSpec, flagCredentialSpec, "Credential spec for managed service account (Windows only)")
 	flags.SetAnnotation(flagCredentialSpec, "version", []string{"1.29"})
 	flags.StringVar(&opts.hostname, flagHostname, "", "Container hostname")
@@ -849,6 +867,7 @@ const (
 	flagMountRemove             = "mount-rm"
 	flagMountAdd                = "mount-add"
 	flagName                    = "name"
+	flagRuntime                 = "runtime"
 	flagNetwork                 = "network"
 	flagNetworkAdd              = "network-add"
 	flagNetworkRemove           = "network-rm"
